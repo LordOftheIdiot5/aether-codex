@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/
+reports/*
+!reports/.gitkeep
+audit_target/*
+!audit_target/.gitkeep
+
+# PoC workspace: keep the project config, ignore agent-generated code + build
+poc_workspace/out/
+poc_workspace/cache/
+poc_workspace/broadcast/
+poc_workspace/src/*
+!poc_workspace/src/.gitkeep
+poc_workspace/test/*
+!poc_workspace/test/.gitkeep

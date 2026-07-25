@@ -1,0 +1,31 @@
+# Isolated Foundry project the poc_writer agent uses to build and RUN exploit
+# proof-of-concepts. Kept separate from the repo-root audit project so the
+# agent's experiments never touch your real work.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["../../lib"]                              # reuse the repo's forge-std
+remappings = ["forge-std/=../../lib/forge-std/src/"]
+optimizer = true
+optimizer_runs = 200
+ffi = false                                       # SECURITY: PoCs may not shell out
+verbosity = 3                                     # show call traces on failure
+
+# Fuzzing / invariant search — used by the invariant_hunter agent to find
+# multi-step bugs. Modest defaults so a run fits the run_forge_test timeout;
+# fail_on_revert=false lets the fuzzer keep exploring past reverting calls.
+[profile.default.fuzz]
+runs = 500
+
+[profile.default.invariant]
+runs = 256
+depth = 100
+fail_on_revert = false
+
+# Fork-based PoCs work only if you set an RPC URL in .env; local-deploy PoCs
+# (deploy the target in the test) need no RPC and are the default path.
+[rpc_endpoints]
+mainnet  = "${MAINNET_RPC_URL}"
+arbitrum = "${ARBITRUM_RPC_URL}"
+base     = "${BASE_RPC_URL}"

@@ -1,0 +1,21 @@
+# --- Core orchestration ---------------------------------------------------
+langgraph>=0.3            # StateGraph / ToolNode multi-agent runtime
+langchain-core>=0.3       # message + tool primitives
+
+# --- LLM providers (switchable at runtime) ---------------------------------
+langchain-anthropic>=0.3  # Claude
+langchain-openai>=0.3     # Grok via xAI's OpenAI-compatible endpoint
+langchain-ollama>=0.2     # local models via Ollama
+
+# --- Memory -----------------------------------------------------------------
+chromadb>=0.5             # persistent vector store (falls back to keyword store if unavailable)
+
+# --- Tools ------------------------------------------------------------------
+ddgs>=9.0                 # DuckDuckGo web search
+numpy>=1.26               # physics calculations
+
+# --- Web UI -----------------------------------------------------------------
+gradio>=6.0
+
+# --- Config -----------------------------------------------------------------
+python-dotenv>=1.0
