@@ -2,7 +2,16 @@
 .venv/
 __pycache__/
 *.pyc
-data/
+
+# Foundry dependency — re-install with:  forge install foundry-rs/forge-std
+# (or: git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std)
+lib/
+
+# Runtime data is transient EXCEPT the invariant library, which is the rig's
+# compounding knowledge base and worth versioning / backing up to GitHub.
+data/*
+!data/invariant_library.json
+
 reports/*
 !reports/.gitkeep
 audit_target/*

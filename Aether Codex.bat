@@ -42,16 +42,18 @@ echo   ==========================================================
 echo.
 echo     [1]  Start web app        (opens in your browser)
 echo     [2]  Terminal chat        (no browser)
-echo     [3]  Open reports folder
-echo     [4]  Quit
+echo     [3]  Fuzz a repo          (long invariant campaign)
+echo     [4]  Open reports folder
+echo     [5]  Quit
 echo.
 set "choice="
-set /p "choice=  Choose an option [1-4]: "
+set /p "choice=  Choose an option [1-5]: "
 
 if "%choice%"=="1" goto web
 if "%choice%"=="2" goto cli
-if "%choice%"=="3" goto reports
-if "%choice%"=="4" goto end
+if "%choice%"=="3" goto fuzz
+if "%choice%"=="4" goto reports
+if "%choice%"=="5" goto end
 echo   Invalid choice.
 timeout /t 1 >nul
 goto menu
@@ -74,6 +76,24 @@ echo.
 echo   Starting terminal chat. Type 'exit' to return to this menu.
 echo.
 "%PY%" -m aether_codex.cli
+pause
+goto menu
+
+:fuzz
+echo.
+echo   FUZZ RIG - point it at a repo you dropped in audit_target\ and walk away.
+echo   It plans invariants, then grinds forge for hours, and reports any breaks.
+echo.
+set "sub="
+set /p "sub=  Subfolder under audit_target\ (blank = all): "
+set "hrs="
+set /p "hrs=  Hours to fuzz [default 2]: "
+if "%hrs%"=="" set "hrs=2"
+echo.
+echo   Starting campaign (Ctrl+C here to stop early)...
+echo.
+"%PY%" -m aether_codex.fuzz_rig %sub% --hours %hrs%
+echo.
 pause
 goto menu
 

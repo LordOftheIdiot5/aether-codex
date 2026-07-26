@@ -5,8 +5,8 @@
 src = "src"
 test = "test"
 out = "out"
-libs = ["../../lib"]                              # reuse the repo's forge-std
-remappings = ["forge-std/=../../lib/forge-std/src/"]
+libs = ["../lib"]                                 # forge-std lives at aether-codex/lib
+remappings = ["forge-std/=../lib/forge-std/src/"]
 optimizer = true
 optimizer_runs = 200
 ffi = false                                       # SECURITY: PoCs may not shell out
