@@ -1,0 +1,66 @@
+[
+ {
+  "name": "invariant_LiquidityAssetConservation",
+  "property": "sum of USDe balances across ARM, market, adapter, feeCollector, actors and deployer equals USDe.totalSupply()",
+  "category": "conservation",
+  "rationale": "catches any bug where the ARM's transfer/transferFrom bookkeeping creates or destroys the liquidity asset",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_BaseAssetConservation",
+  "property": "sum of sUSDe balances across ARM, adapter and actors equals sUSDe.totalSupply()",
+  "category": "conservation",
+  "rationale": "same conservation check for the base asset leg of swaps/adapter redemptions",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_ShareSupplyAccountedFor",
+  "property": "sum of ARM LP-share balances across actors, the ARM contract itself (redeem escrow) and DEAD_ACCOUNT equals arm.totalSupply()",
+  "category": "accounting",
+  "rationale": "would catch LP shares leaking to an unexpected address (e.g. a mis-targeted _mint/_transfer in a future code path)",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_ReservedWithdrawLiquidityMatchesUnclaimedRequests",
+  "property": "reservedWithdrawLiquidity == sum of request.assets over all unclaimed withdrawal requests, and arm.balanceOf(arm) == sum of request.shares over the same set",
+  "category": "accounting",
+  "rationale": "directly tests the core promise of claimRedeem/requestRedeem bookkeeping (reservation release and share-escrow burn) computed independently from on-chain state rather than mirrored, so a bug in either function's accounting would be caught",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_ClaimGateNeverBlocksABackedRequest",
+  "property": "whenever a withdrawal request is matured and passes the ARM's own claim gate (request.queued <= claimable()), claimRedeem() must actually succeed",
+  "category": "solvency",
+  "rationale": "this is the deepest, most valuable property here: claimable()'s share-denominated FIFO gate is documented in the contract's own comments as having edge cases (non-liquid NAV growth without matching liquidity growth can shrink the share frontier). A handler probe actively attempts every gated-but-unclaimed request and flags any revert as a genuine solvency-gate failure, not just a benign happy-path call",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_TotalAssetsFloor",
+  "property": "totalAssets() never returns less than MIN_TOTAL_SUPPLY (1e12)",
+  "category": "solvency",
+  "rationale": "sanity check on the explicit clamp in totalAssets(); also guards against any future refactor accidentally removing the clamp or introducing an underflow path",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_BaseAssetPriceBoundsHold",
+  "property": "for the supported base asset, buyPrice < crossPrice <= sellPrice always",
+  "category": "state-machine",
+  "rationale": "this spread is what guarantees discounted buys still add NAV to LPs and the ARM never sells base assets under its own valuation price; setPrices/setCrossPrice/addBaseAsset each enforce it locally but the invariant checks it survives arbitrary admin+swap interleavings",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ },
+ {
+  "name": "invariant_ClaimedSharesNeverExceedQueuedShares",
+  "property": "withdrawsClaimedShares <= withdrawsQueuedShares",
+  "category": "monotonic",
+  "rationale": "basic FIFO-queue sanity: cumulative claims can never exceed cumulative requests",
+  "first_seen_on": "ethena-arm/impl",
+  "date": "2026-07-27"
+ }
+]
