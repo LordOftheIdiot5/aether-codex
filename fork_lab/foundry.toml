@@ -11,3 +11,5 @@ remappings = ["forge-std/=../lib/forge-std/src/"]
 # with no signup. Not a secret, so it lives here directly.
 [rpc_endpoints]
 mainnet = "https://eth.drpc.org"
+bsc     = "https://bsc-dataseed.binance.org"
+base    = "https://base.drpc.org"

@@ -1,13 +1,15 @@
-"""Live new-launch scanner (MVP).
+"""Live multi-chain new-launch scanner (MVP).
 
-Watches the Uniswap V2 factory for freshly created pairs, pulls the new token out
-of each, and runs the fork-based safety check on it — producing a risk card per
-launch. This is the "see new launches -> auto-check them" pipeline.
+Watches Uniswap-V2-style factories across EVM chains for freshly created pairs,
+pulls the new token out of each, and runs the fork-based safety check on it —
+producing a risk card per launch. "See new launches -> auto-check them", now
+across Ethereum + BSC (where the honeypots actually are).
 
 Honest scope: surfaces FACTS (verified source? sellable? hidden tax?), not price
 predictions. Stdlib only — no pip installs.
 
-Run:  python scan_launches.py [block_span] [max_tokens]
+Run:  python scan_launches.py [span] [max_per_chain] [chain1,chain2]
+Ex:   python scan_launches.py 400 2 bsc
 """
 import json
 import os
@@ -16,25 +18,41 @@ import sys
 import urllib.request
 from pathlib import Path
 
-# JSON-RPC endpoints for the monitor (the fork check uses drpc via foundry.toml).
-# Tried in order; browser UA avoids 403s from gateways that block default urllib.
-RPCS = [
-    "https://ethereum-rpc.publicnode.com",
-    "https://eth.drpc.org",
-    "https://rpc.mevblocker.io",
-]
-FACTORY = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"
-WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".lower()
-# keccak256("PairCreated(address,address,address,uint256)")
-PAIRCREATED = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
 FORK_LAB = Path(__file__).resolve().parent
+# keccak256("PairCreated(address,address,address,uint256)") — same on every V2 fork.
+PAIRCREATED = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
+
+CHAINS = {
+    "ethereum": {
+        "chainid": 1,
+        "rpcs": ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"],
+        "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",   # Uniswap V2
+        "router": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+        "wnative": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",   # WETH
+        "fork": "mainnet",
+    },
+    "bsc": {
+        "chainid": 56,
+        "rpcs": [
+            "https://bsc-dataseed.binance.org",
+            "https://bsc-dataseed1.defibit.io",
+            "https://bsc-dataseed1.ninicoin.io",
+            "https://bsc-rpc.publicnode.com",
+            "https://bsc.drpc.org",
+        ],
+        "factory": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",   # PancakeSwap V2
+        "router": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+        "wnative": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",   # WBNB
+        "fork": "bsc",
+    },
+}
 
 
-def rpc(method, params):
+def rpc(rpcs, method, params):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
     last = None
-    for url in RPCS:
+    for url in rpcs:
         try:
             req = urllib.request.Request(url, data=body, headers=headers)
             with urllib.request.urlopen(req, timeout=40) as r:
@@ -58,11 +76,11 @@ def etherscan_key():
     return ""
 
 
-def is_verified(token, key):
+def is_verified(token, chainid, key):
     if not key:
         return None
-    url = ("https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getsourcecode"
-           f"&address={token}&apikey={key}")
+    url = (f"https://api.etherscan.io/v2/api?chainid={chainid}&module=contract"
+           f"&action=getsourcecode&address={token}&apikey={key}")
     try:
         with urllib.request.urlopen(url, timeout=25) as r:
             d = json.loads(r.read())
@@ -72,10 +90,12 @@ def is_verified(token, key):
         return None
 
 
-def honeypot_check(token):
-    """Invoke the fork-based checker for one token; return (verdict, loss_bps)."""
+def honeypot_check(token, chain):
     env = dict(os.environ)
     env["CHECK_TOKEN"] = token
+    env["CHECK_FORK"] = chain["fork"]
+    env["CHECK_ROUTER"] = chain["router"]
+    env["CHECK_WNATIVE"] = chain["wnative"]
     try:
         p = subprocess.run(
             ["forge", "test", "--match-test", "test_checkEnvToken", "-vv"],
@@ -87,44 +107,58 @@ def honeypot_check(token):
         if "SCANRESULT:" in line:
             payload = line.split("SCANRESULT:", 1)[1].strip().split()
             if len(payload) >= 3:
-                return (payload[1], payload[2])  # verdict, lossBps
+                return (payload[1], payload[2])
     return ("UNKNOWN", "?")
 
 
-def main():
-    span = int(sys.argv[1]) if len(sys.argv) > 1 else 250
-    max_tokens = int(sys.argv[2]) if len(sys.argv) > 2 else 3
-
-    latest = int(rpc("eth_blockNumber", []), 16)
+def iter_new_tokens(chain, span, chunk=150):
+    """Yield freshly-launched wrapped-native-paired tokens, newest first, fetching
+    logs in small chunks to stay under public-RPC getLogs range/rate limits."""
+    import time
+    wnative = chain["wnative"].lower()
+    latest = int(rpc(chain["rpcs"], "eth_blockNumber", []), 16)
     frm = latest - span
-    logs = rpc("eth_getLogs", [{
-        "address": FACTORY, "topics": [PAIRCREATED],
-        "fromBlock": hex(frm), "toBlock": "latest",
-    }])
+    print("\n" + "=" * 64)
+    print(f"  {chain_label}  |  scanning blocks {frm}..{latest}")
     print("=" * 64)
-    print(f"  LAUNCH SCANNER  |  Uniswap V2 pairs, blocks {frm}..{latest}")
-    print(f"  {len(logs)} new pair(s) in the last {span} blocks")
-    print("=" * 64)
+    b = latest
+    while b > frm:
+        lo = max(frm, b - chunk + 1)
+        try:
+            part = rpc(chain["rpcs"], "eth_getLogs", [{
+                "address": chain["factory"], "topics": [PAIRCREATED],
+                "fromBlock": hex(lo), "toBlock": hex(b),
+            }])
+        except Exception:
+            time.sleep(1.0)
+            b = lo - 1
+            continue
+        for lg in reversed(part):
+            token0 = "0x" + lg["topics"][1][-40:]
+            token1 = "0x" + lg["topics"][2][-40:]
+            if token1.lower() == wnative:
+                yield token0
+            elif token0.lower() == wnative:
+                yield token1
+        b = lo - 1
+        time.sleep(0.3)
 
-    key = etherscan_key()
+
+chain_label = ""
+
+
+def scan_chain(name, chain, span, max_tokens, key):
+    global chain_label
+    chain_label = name.upper()
     checked = 0
-    for lg in reversed(logs):  # newest first
-        token0 = "0x" + lg["topics"][1][-40:]
-        token1 = "0x" + lg["topics"][2][-40:]
-        if token1.lower() == WETH:
-            token = token0
-        elif token0.lower() == WETH:
-            token = token1
-        else:
-            continue  # not a WETH pair — skip
+    for token in iter_new_tokens(chain, span):
         checked += 1
         if checked > max_tokens:
             break
-
-        print(f"\n[{checked}] New launch: {token}")
-        v = is_verified(token, key)
+        print(f"\n[{name} {checked}] {token}")
+        v = is_verified(token, chain["chainid"], key)
         print(f"    verified source : {'yes' if v else ('NO' if v is False else '?')}")
-        verdict, loss = honeypot_check(token)
+        verdict, loss = honeypot_check(token, chain)
         print(f"    live sell test  : {verdict}  (round-trip loss bps: {loss})")
 
         flags = []
@@ -141,7 +175,24 @@ def main():
         print(f"    >>> {card}" + (f"   [{', '.join(flags)}]" if flags else ""))
 
     if checked == 0:
-        print("\n(No WETH-paired launches in this window — widen the block span.)")
+        print("  (no wrapped-native pairs found in this window — widen the span)")
+
+
+def main():
+    span = int(sys.argv[1]) if len(sys.argv) > 1 else 400
+    max_tokens = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+    which = sys.argv[3].split(",") if len(sys.argv) > 3 else list(CHAINS)
+
+    key = etherscan_key()
+    for name in which:
+        chain = CHAINS.get(name.strip().lower())
+        if not chain:
+            print(f"(unknown chain '{name}', skipping)")
+            continue
+        try:
+            scan_chain(name.strip().lower(), chain, span, max_tokens, key)
+        except Exception as exc:
+            print(f"\n[{name}] scan failed: {exc}")
 
 
 if __name__ == "__main__":

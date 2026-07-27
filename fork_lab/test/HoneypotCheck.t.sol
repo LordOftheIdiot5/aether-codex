@@ -39,17 +39,28 @@ contract HoneypotCheck is Test {
         vm.createSelectFork("mainnet", 20000000);
     }
 
+    /// Ethereum-default wrapper (used by the PEPE / honeypot unit tests).
+    function _check(address token) internal returns (bool, uint256) {
+        return _checkOn(token, address(ROUTER), WETH);
+    }
+
+    /// @notice Chain-agnostic buy-then-sell test. Works on any Uniswap-V2-style DEX
+    ///         (Uniswap on ETH, PancakeSwap on BSC, ...) — pass its router + wrapped native.
     /// @return sellable false = honeypot (bought but can't sell)
     /// @return lossBps round-trip loss in basis points (AMM fee + slippage + any token tax)
-    function _check(address token) internal returns (bool sellable, uint256 lossBps) {
-        uint256 buyEth = 0.1 ether;
+    function _checkOn(address token, address routerAddr, address wnative)
+        internal
+        returns (bool sellable, uint256 lossBps)
+    {
+        IUniV2Router router = IUniV2Router(routerAddr);
+        uint256 buyNative = 0.1 ether; // 0.1 of the chain's native coin (ETH/BNB)
         vm.deal(address(this), 1 ether);
 
-        // BUY: ETH -> token (fee-on-transfer-safe path handles tax tokens)
+        // BUY: native -> token (fee-on-transfer-safe path handles tax tokens)
         address[] memory buyPath = new address[](2);
-        buyPath[0] = WETH;
+        buyPath[0] = wnative;
         buyPath[1] = token;
-        try ROUTER.swapExactETHForTokensSupportingFeeOnTransferTokens{value: buyEth}(
+        try router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: buyNative}(
             0, buyPath, address(this), block.timestamp
         ) {} catch {
             return (false, 10000); // can't even buy — dead/unbuyable
@@ -58,21 +69,21 @@ contract HoneypotCheck is Test {
         uint256 tokBal = IERC20(token).balanceOf(address(this));
         if (tokBal == 0) return (false, 10000);
 
-        // SELL: token -> ETH. This is the honeypot test — scam tokens revert HERE.
-        IERC20(token).approve(address(ROUTER), tokBal);
+        // SELL: token -> native. This is the honeypot test — scam tokens revert HERE.
+        IERC20(token).approve(routerAddr, tokBal);
         address[] memory sellPath = new address[](2);
         sellPath[0] = token;
-        sellPath[1] = WETH;
-        uint256 ethBefore = address(this).balance;
-        try ROUTER.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        sellPath[1] = wnative;
+        uint256 nativeBefore = address(this).balance;
+        try router.swapExactTokensForETHSupportingFeeOnTransferTokens(
             tokBal, 0, sellPath, address(this), block.timestamp
         ) {} catch {
             return (false, 10000); // HONEYPOT: bought fine, cannot sell
         }
 
-        uint256 ethBack = address(this).balance - ethBefore;
-        sellable = ethBack > 0;
-        lossBps = ethBack >= buyEth ? 0 : ((buyEth - ethBack) * 10000) / buyEth;
+        uint256 nativeBack = address(this).balance - nativeBefore;
+        sellable = nativeBack > 0;
+        lossBps = nativeBack >= buyNative ? 0 : ((buyNative - nativeBack) * 10000) / buyNative;
     }
 
     function test_checkPEPE() public {
@@ -110,8 +121,12 @@ contract HoneypotCheck is Test {
     function test_checkEnvToken() public {
         address token = vm.envOr("CHECK_TOKEN", address(0));
         if (token == address(0)) return;
-        vm.createSelectFork("mainnet"); // latest block, for freshly-launched tokens
-        (bool sellable, uint256 lossBps) = _check(token);
+        // Per-chain params supplied by the scanner (default to Ethereum/Uniswap).
+        string memory forkAlias = vm.envOr("CHECK_FORK", string("mainnet"));
+        address routerAddr = vm.envOr("CHECK_ROUTER", address(ROUTER));
+        address wnative = vm.envOr("CHECK_WNATIVE", WETH);
+        vm.createSelectFork(forkAlias); // latest block on the target chain
+        (bool sellable, uint256 lossBps) = _checkOn(token, routerAddr, wnative);
         emit log_named_string(
             "SCANRESULT",
             string.concat(vm.toString(token), " ", sellable ? "SELLABLE" : "HONEYPOT", " ", vm.toString(lossBps))
