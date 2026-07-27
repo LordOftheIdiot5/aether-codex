@@ -17,6 +17,10 @@ reports/*
 audit_target/*
 !audit_target/.gitkeep
 
+# Fork lab: keep the learning PoCs + config, ignore build artifacts
+fork_lab/out/
+fork_lab/cache/
+
 # PoC workspace: keep the project config, ignore agent-generated code + build
 poc_workspace/out/
 poc_workspace/cache/

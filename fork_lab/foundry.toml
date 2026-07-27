@@ -1,0 +1,13 @@
+# Fork-lab: a clean workspace for reproducing real historical exploits against
+# real mainnet state. Learning track — separate from the audit rig's poc_workspace.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["../lib"]                                 # reuse forge-std at aether-codex/lib
+remappings = ["forge-std/=../lib/forge-std/src/"]
+
+# Free public ARCHIVE RPC — serves 2020-era state, so we can fork at old hack blocks
+# with no signup. Not a secret, so it lives here directly.
+[rpc_endpoints]
+mainnet = "https://eth.drpc.org"
