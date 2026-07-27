@@ -105,6 +105,19 @@ contract HoneypotCheck is Test {
         assertFalse(sellable, "checker FAILED to catch the honeypot");
     }
 
+    /// Live check driven by the scanner: reads CHECK_TOKEN env, forks latest, and prints a
+    /// machine-parseable SCANRESULT line. No-op under a normal `forge test` (env unset).
+    function test_checkEnvToken() public {
+        address token = vm.envOr("CHECK_TOKEN", address(0));
+        if (token == address(0)) return;
+        vm.createSelectFork("mainnet"); // latest block, for freshly-launched tokens
+        (bool sellable, uint256 lossBps) = _check(token);
+        emit log_named_string(
+            "SCANRESULT",
+            string.concat(vm.toString(token), " ", sellable ? "SELLABLE" : "HONEYPOT", " ", vm.toString(lossBps))
+        );
+    }
+
     receive() external payable {}
 }
 
