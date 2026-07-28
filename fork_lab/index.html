@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RugRadar — fork-verified launch safety</title>
+<style>
+  :root{
+    --bg:#0a0d14; --panel:#121724; --panel2:#0f1420; --line:#212a3d;
+    --text:#e6ebf5; --dim:#8a97b1; --accent:#37e0a0; --accent2:#22d3ee;
+    --green:#2fd27a; --amber:#f5b13d; --red:#f2564b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#152033 0,var(--bg) 55%);
+    color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .logo{font-size:26px}
+  h1{font-size:22px;margin:0;letter-spacing:.2px}
+  .tag{color:var(--dim);font-size:13px}
+  .hero{margin:22px 0 30px;padding:20px 22px;background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line);border-radius:16px}
+  .hero b{color:var(--accent)}
+  .grid2{display:grid;grid-template-columns:1fr;gap:18px}
+  @media(min-width:760px){.grid2{grid-template-columns:1fr 1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h2{font-size:14px;margin:0 0 12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  input,select,button{font:inherit}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    padding:10px 12px;border-radius:10px;outline:none}
+  input{flex:1;min-width:180px;font-family:var(--mono);font-size:13px}
+  input:focus,select:focus{border-color:var(--accent)}
+  button{background:var(--accent);color:#04150d;border:0;padding:10px 16px;border-radius:10px;
+    font-weight:700;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  .results{margin-top:16px;display:flex;flex-direction:column;gap:12px}
+  .verdict{border:1px solid var(--line);border-left-width:4px;border-radius:12px;padding:14px 16px;background:var(--panel2)}
+  .verdict.clean{border-left-color:var(--green)}
+  .verdict.caution{border-left-color:var(--amber)}
+  .verdict.avoid{border-left-color:var(--red)}
+  .verdict .top{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}
+  .badge{font-weight:800;font-size:12px;letter-spacing:.06em;padding:4px 10px;border-radius:999px}
+  .badge.clean{background:rgba(47,210,122,.14);color:var(--green)}
+  .badge.caution{background:rgba(245,177,61,.15);color:var(--amber)}
+  .badge.avoid{background:rgba(242,86,75,.15);color:var(--red)}
+  .addr{font-family:var(--mono);font-size:12.5px;color:var(--dim);word-break:break-all}
+  .meta{margin-top:8px;font-size:13.5px;color:var(--text)}
+  .meta .k{color:var(--dim)}
+  .flags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+  .flag{font-size:11.5px;background:#1b2334;border:1px solid var(--line);color:var(--dim);padding:3px 8px;border-radius:999px}
+  .flag.hard{color:var(--red);border-color:rgba(242,86,75,.4)}
+  .muted{color:var(--dim);font-size:13px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  footer{margin-top:34px;color:var(--dim);font-size:12.5px;text-align:center}
+  .pill{font-size:11px;color:var(--accent);border:1px solid rgba(55,224,160,.35);padding:2px 8px;border-radius:999px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🛡️</div>
+    <div>
+      <h1>RugRadar</h1>
+      <div class="tag">Fork-verified launch safety — we don't guess, we buy &amp; try to sell.</div>
+    </div>
+  </header>
+
+  <div class="hero">
+    Every check <b>forks mainnet, actually buys the token, and tries to sell it.</b>
+    Honeypots can fake a clean contract — they can't fake a real sell. <span class="pill">ETH + BSC</span>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Check any token</h2>
+      <div class="row">
+        <select id="checkChain">
+          <option value="ethereum">Ethereum</option>
+          <option value="bsc">BSC</option>
+        </select>
+        <input id="checkAddr" placeholder="0x… token address" spellcheck="false" />
+        <button id="checkBtn">Check</button>
+      </div>
+      <div class="results" id="checkOut"></div>
+    </div>
+
+    <div class="card">
+      <h2>Latest launches</h2>
+      <div class="row">
+        <select id="scanChain">
+          <option value="ethereum">Ethereum</option>
+          <option value="bsc">BSC</option>
+        </select>
+        <select id="scanCount">
+          <option value="2">2 newest</option>
+          <option value="3" selected>3 newest</option>
+          <option value="5">5 newest</option>
+        </select>
+        <button id="scanBtn">Scan</button>
+      </div>
+      <div class="results" id="scanOut"><div class="muted">Pulls the newest pairs and safety-checks each.</div></div>
+    </div>
+  </div>
+
+  <footer>
+    Runs locally. Results are on-chain facts (sellability, tax, verification), <b>not price predictions</b>.
+    Not financial advice — DYOR.
+  </footer>
+</div>
+
+<script>
+const TITLES = {clean:"LOOKS CLEAN", caution:"CAUTION", avoid:"AVOID"};
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function sellLine(r){
+  if(r.verdict==="SELLABLE") return "Sellable — round-trip loss "+r.loss+" bps";
+  if(r.verdict==="HONEYPOT") return "HONEYPOT — the sell reverts";
+  if(r.verdict==="NOBUY")    return "Not tradeable yet (no liquidity)";
+  return r.verdict;
+}
+function cardHTML(r){
+  const flags = (r.flags||[]).map(f=>{
+    const hard = /honeypot|high tax/i.test(f);
+    return `<span class="flag ${hard?'hard':''}">${esc(f)}</span>`;
+  }).join("");
+  return `<div class="verdict ${r.tier}">
+    <div class="top">
+      <span class="badge ${r.tier}">${TITLES[r.tier]||r.tier}</span>
+      <span class="muted">${esc(r.chain).toUpperCase()}</span>
+    </div>
+    <div class="addr" style="margin-top:8px">${esc(r.token)}</div>
+    <div class="meta"><span class="k">sell test:</span> ${esc(sellLine(r))}</div>
+    <div class="meta"><span class="k">source:</span> ${r.verified===true?"verified":(r.verified===false?"not verified":"unknown")}</div>
+    ${flags?`<div class="flags">${flags}</div>`:""}
+    <div class="meta"><a href="${esc(r.explorer)}" target="_blank" rel="noopener">view on explorer →</a></div>
+  </div>`;
+}
+function loading(el,msg){el.innerHTML=`<div class="muted"><span class="spin"></span>${msg}</div>`;}
+function errbox(el,msg){el.innerHTML=`<div class="verdict avoid"><b>Error:</b> ${esc(msg)}</div>`;}
+
+document.getElementById("checkBtn").onclick = async ()=>{
+  const chain=checkChain.value, token=checkAddr.value.trim();
+  if(!/^0x[0-9a-fA-F]{40}$/.test(token)){ errbox(checkOut,"enter a valid 0x token address"); return; }
+  checkBtn.disabled=true; loading(checkOut,"forking mainnet & testing a real buy → sell…");
+  try{
+    const r = await fetch(`/api/check?chain=${chain}&token=${token}`).then(x=>x.json());
+    if(r.error) errbox(checkOut,r.error); else checkOut.innerHTML=cardHTML(r);
+  }catch(e){ errbox(checkOut,e.message); } finally{ checkBtn.disabled=false; }
+};
+document.getElementById("scanBtn").onclick = async ()=>{
+  const chain=scanChain.value, count=scanCount.value;
+  scanBtn.disabled=true; loading(scanOut,`pulling latest ${chain.toUpperCase()} launches & checking each…`);
+  try{
+    const rows = await fetch(`/api/scan?chain=${chain}&count=${count}`).then(x=>x.json());
+    if(rows.error){ errbox(scanOut,rows.error); }
+    else if(!rows.length){ scanOut.innerHTML=`<div class="muted">No fresh launches in the window — try again shortly.</div>`; }
+    else scanOut.innerHTML = rows.map(cardHTML).join("");
+  }catch(e){ errbox(scanOut,e.message); } finally{ scanBtn.disabled=false; }
+};
+checkAddr.addEventListener("keydown",e=>{ if(e.key==="Enter") checkBtn.click(); });
+</script>
+</body>
+</html>
