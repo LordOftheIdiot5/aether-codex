@@ -48,6 +48,8 @@
   .badge.caution{background:rgba(245,177,61,.15);color:var(--amber)}
   .badge.avoid{background:rgba(242,86,75,.15);color:var(--red)}
   .addr{font-family:var(--mono);font-size:12.5px;color:var(--dim);word-break:break-all}
+  .tname{font-size:16px;font-weight:700;margin:8px 0 3px}
+  .tn2{color:var(--dim);font-weight:500;font-size:14px}
   .meta{margin-top:8px;font-size:13.5px;color:var(--text)}
   .meta .k{color:var(--dim)}
   .flags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
@@ -128,13 +130,21 @@ function cardHTML(r){
     const hard = /honeypot|high tax/i.test(f);
     return `<span class="flag ${hard?'hard':''}">${esc(f)}</span>`;
   }).join("");
+  const title = r.symbol
+    ? `$${esc(r.symbol)}${(r.name && r.name!==r.symbol) ? ` <span class="tn2">· ${esc(r.name)}</span>` : ""}`
+    : `<span class="tn2">unnamed token</span>`;
+  const liq = (r.liquidity!=null)
+    ? `${r.liquidity.toFixed(r.liquidity<1?3:2)} ${esc(r.native||"")}`
+    : "unknown";
   return `<div class="verdict ${r.tier}">
     <div class="top">
       <span class="badge ${r.tier}">${TITLES[r.tier]||r.tier}</span>
       <span class="muted">${esc(r.chain).toUpperCase()}</span>
     </div>
-    <div class="addr" style="margin-top:8px">${esc(r.token)}</div>
+    <div class="tname">${title}</div>
+    <div class="addr">${esc(r.token)}</div>
     <div class="meta"><span class="k">sell test:</span> ${esc(sellLine(r))}</div>
+    <div class="meta"><span class="k">liquidity:</span> ${liq}</div>
     <div class="meta"><span class="k">source:</span> ${r.verified===true?"verified":(r.verified===false?"not verified":"unknown")}</div>
     ${flags?`<div class="flags">${flags}</div>`:""}
     <div class="meta"><a href="${esc(r.explorer)}" target="_blank" rel="noopener">view on explorer →</a></div>

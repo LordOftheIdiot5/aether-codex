@@ -50,9 +50,64 @@ def recent_tokens(chain, span, cap):
     return out
 
 
+def _eth_call(chain, to, data):
+    try:
+        return S.rpc(chain["rpcs"], "eth_call", [{"to": to, "data": data}, "latest"])
+    except Exception:
+        return "0x"
+
+
+def _pad(addr):
+    return addr.lower().replace("0x", "").rjust(64, "0")
+
+
+def _dec_string(hexdata):
+    if not hexdata or hexdata == "0x":
+        return ""
+    try:
+        b = bytes.fromhex(hexdata[2:])
+        if len(b) >= 64 and int.from_bytes(b[:32], "big") == 32:
+            length = int.from_bytes(b[32:64], "big")
+            s = b[64:64 + length].decode("utf-8", "replace").strip("\x00")
+            if s:
+                return s
+        return b[:32].rstrip(b"\x00").decode("utf-8", "replace").strip("\x00")  # bytes32 fallback
+    except Exception:
+        return ""
+
+
+def token_meta(token, chain):
+    name = _dec_string(_eth_call(chain, token, "0x06fdde03"))     # name()
+    symbol = _dec_string(_eth_call(chain, token, "0x95d89b41"))   # symbol()
+    return name.strip()[:40], symbol.strip()[:16]
+
+
+def liquidity_native(token, chain):
+    """Wrapped-native reserve in the token's DEX pair (in ETH/BNB units)."""
+    try:
+        pairhex = _eth_call(chain, chain["factory"], "0xe6a43905" + _pad(token) + _pad(chain["wnative"]))
+        pair = "0x" + pairhex[-40:]
+        if int(pair, 16) == 0:
+            return None
+        res = _eth_call(chain, pair, "0x0902f1ac")  # getReserves()
+        b = bytes.fromhex(res[2:])
+        if len(b) < 64:
+            return None
+        r0 = int.from_bytes(b[0:32], "big")
+        r1 = int.from_bytes(b[32:64], "big")
+        token0 = "0x" + _eth_call(chain, pair, "0x0dfe1681")[-40:]  # token0()
+        native = r0 if token0.lower() == chain["wnative"].lower() else r1
+        return native / 1e18
+    except Exception:
+        return None
+
+
 def assess(token, chain_name):
     chain = S.CHAINS[chain_name]
+    native_sym = "BNB" if chain_name == "bsc" else "ETH"
     verified = S.is_verified(token, chain["chainid"], KEY)
+    name, symbol = token_meta(token, chain)
+    liq = liquidity_native(token, chain)
     verdict, loss = S.honeypot_check(token, chain)
 
     hard, soft = [], []
@@ -68,13 +123,16 @@ def assess(token, chain_name):
             soft.append(f"Elevated tax ~{lv // 100}%")
     except (TypeError, ValueError):
         pass
+    if liq is not None and liq < (5 if chain_name == "bsc" else 1):
+        soft.append(f"Low liquidity (~{liq:.2f} {native_sym})")
     if verified is False:
         soft.append("Source not verified")
 
     tier = "avoid" if hard else ("caution" if soft else "clean")
     return {
-        "token": token, "chain": chain_name, "verified": verified,
-        "verdict": verdict, "loss": loss, "tier": tier,
+        "token": token, "chain": chain_name, "name": name, "symbol": symbol,
+        "verified": verified, "verdict": verdict, "loss": loss,
+        "liquidity": liq, "native": native_sym, "tier": tier,
         "flags": hard + soft, "explorer": EXPLORERS.get(chain_name, "") + token,
     }
 
