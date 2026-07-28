@@ -146,6 +146,7 @@ function cardHTML(r){
     <div class="meta"><span class="k">sell test:</span> ${esc(sellLine(r))}</div>
     <div class="meta"><span class="k">liquidity:</span> ${liq}</div>
     <div class="meta"><span class="k">source:</span> ${r.verified===true?"verified":(r.verified===false?"not verified":"unknown")}</div>
+    <div class="meta"><span class="k">ownership:</span> ${esc(r.ownership||"unknown")}</div>
     ${flags?`<div class="flags">${flags}</div>`:""}
     <div class="meta"><a href="${esc(r.explorer)}" target="_blank" rel="noopener">view on explorer →</a></div>
   </div>`;

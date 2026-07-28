@@ -102,12 +102,44 @@ def liquidity_native(token, chain):
         return None
 
 
+def _owner(token, chain):
+    r = _eth_call(chain, token, "0x8da5cb5b")  # owner()
+    if not r or len(r) < 66:
+        return None  # no owner() function exposed
+    return "0x" + r[-40:]
+
+
+def source_flags(token, chainid):
+    """Scan verified source for owner-privileged / dangerous functions."""
+    if not KEY:
+        return {"verified": None}
+    url = (f"https://api.etherscan.io/v2/api?chainid={chainid}&module=contract"
+           f"&action=getsourcecode&address={token}&apikey={KEY}")
+    try:
+        with urllib.request.urlopen(url, timeout=25) as r:
+            res = (json.loads(r.read()).get("result") or [{}])[0]
+        src = res.get("SourceCode", "") or ""
+    except Exception:
+        return {"verified": None}
+    low = src.lower()
+    return {
+        "verified": bool(src),
+        "mint": "function mint" in low,
+        "pause": "function pause" in low or "whennotpaused" in low,
+        "blacklist": "blacklist" in low or "blocklist" in low,
+        "setfee": "setfee" in low or "settax" in low or "setfees" in low or "settaxes" in low,
+    }
+
+
 def assess(token, chain_name):
     chain = S.CHAINS[chain_name]
     native_sym = "BNB" if chain_name == "bsc" else "ETH"
-    verified = S.is_verified(token, chain["chainid"], KEY)
     name, symbol = token_meta(token, chain)
     liq = liquidity_native(token, chain)
+    sf = source_flags(token, chain["chainid"])
+    verified = sf.get("verified")
+    owner = _owner(token, chain)
+    renounced = owner is not None and int(owner, 16) == 0
     verdict, loss = S.honeypot_check(token, chain)
 
     hard, soft = [], []
@@ -125,6 +157,18 @@ def assess(token, chain_name):
         pass
     if liq is not None and liq < (5 if chain_name == "bsc" else 1):
         soft.append(f"Low liquidity (~{liq:.2f} {native_sym})")
+
+    # Owner-privilege risks only bite if ownership is NOT renounced.
+    if not renounced:
+        if sf.get("blacklist"):
+            hard.append("Owner can blacklist wallets")
+        if sf.get("mint"):
+            hard.append("Owner can mint more (dilution)")
+        if sf.get("pause"):
+            soft.append("Owner can pause trading")
+        if sf.get("setfee"):
+            soft.append("Owner can change fees")
+    ownership = "renounced" if renounced else ("owner active" if owner else "no owner / unknown")
     if verified is False:
         soft.append("Source not verified")
 
@@ -132,8 +176,8 @@ def assess(token, chain_name):
     return {
         "token": token, "chain": chain_name, "name": name, "symbol": symbol,
         "verified": verified, "verdict": verdict, "loss": loss,
-        "liquidity": liq, "native": native_sym, "tier": tier,
-        "flags": hard + soft, "explorer": EXPLORERS.get(chain_name, "") + token,
+        "liquidity": liq, "native": native_sym, "ownership": ownership,
+        "tier": tier, "flags": hard + soft, "explorer": EXPLORERS.get(chain_name, "") + token,
     }
 
 
