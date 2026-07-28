@@ -40,17 +40,17 @@ contract HoneypotCheck is Test {
     }
 
     /// Ethereum-default wrapper (used by the PEPE / honeypot unit tests).
-    function _check(address token) internal returns (bool, uint256) {
+    function _check(address token) internal returns (uint8, uint256) {
         return _checkOn(token, address(ROUTER), WETH);
     }
 
-    /// @notice Chain-agnostic buy-then-sell test. Works on any Uniswap-V2-style DEX
-    ///         (Uniswap on ETH, PancakeSwap on BSC, ...) — pass its router + wrapped native.
-    /// @return sellable false = honeypot (bought but can't sell)
+    /// @notice Chain-agnostic buy-then-sell test. Works on any Uniswap-V2-style DEX.
+    /// @return status 0 = SELLABLE, 1 = HONEYPOT (bought but the SELL reverts — a real trap),
+    ///         2 = NOBUY (can't buy: no liquidity / not tradeable yet — NOT necessarily a scam).
     /// @return lossBps round-trip loss in basis points (AMM fee + slippage + any token tax)
     function _checkOn(address token, address routerAddr, address wnative)
         internal
-        returns (bool sellable, uint256 lossBps)
+        returns (uint8 status, uint256 lossBps)
     {
         IUniV2Router router = IUniV2Router(routerAddr);
         uint256 buyNative = 0.1 ether; // 0.1 of the chain's native coin (ETH/BNB)
@@ -63,13 +63,13 @@ contract HoneypotCheck is Test {
         try router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: buyNative}(
             0, buyPath, address(this), block.timestamp
         ) {} catch {
-            return (false, 10000); // can't even buy — dead/unbuyable
+            return (2, 0); // NOBUY — no liquidity / not tradeable (distinct from a honeypot)
         }
 
         uint256 tokBal = IERC20(token).balanceOf(address(this));
-        if (tokBal == 0) return (false, 10000);
+        if (tokBal == 0) return (2, 0);
 
-        // SELL: token -> native. This is the honeypot test — scam tokens revert HERE.
+        // SELL: token -> native. THIS is the honeypot test — real traps revert here.
         IERC20(token).approve(routerAddr, tokBal);
         address[] memory sellPath = new address[](2);
         sellPath[0] = token;
@@ -78,20 +78,20 @@ contract HoneypotCheck is Test {
         try router.swapExactTokensForETHSupportingFeeOnTransferTokens(
             tokBal, 0, sellPath, address(this), block.timestamp
         ) {} catch {
-            return (false, 10000); // HONEYPOT: bought fine, cannot sell
+            return (1, 10000); // HONEYPOT: bought fine, cannot sell
         }
 
         uint256 nativeBack = address(this).balance - nativeBefore;
-        sellable = nativeBack > 0;
+        status = 0; // sellable
         lossBps = nativeBack >= buyNative ? 0 : ((buyNative - nativeBack) * 10000) / buyNative;
     }
 
     function test_checkPEPE() public {
-        (bool sellable, uint256 lossBps) = _check(PEPE);
+        (uint8 status, uint256 lossBps) = _check(PEPE);
         emit log_named_string("token", "PEPE");
-        emit log_named_string("verdict", sellable ? "SELLABLE (not a honeypot)" : "HONEYPOT / unsellable");
+        emit log_named_string("verdict", status == 0 ? "SELLABLE" : status == 1 ? "HONEYPOT" : "NOBUY");
         emit log_named_uint("round-trip loss bps (fee+slippage+tax)", lossBps);
-        assertTrue(sellable, "PEPE should be sellable on a fork");
+        assertEq(status, 0, "PEPE should be sellable on a fork");
     }
 
     IUniV2Factory constant FACTORY = IUniV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
@@ -109,11 +109,11 @@ contract HoneypotCheck is Test {
         vm.stopPrank();
 
         // Now the tool runs its normal check as an ordinary buyer (NOT the owner).
-        (bool sellable, uint256 lossBps) = _check(address(scam));
+        (uint8 status, uint256 lossBps) = _check(address(scam));
         emit log_named_string("token", "SCAM (deployed honeypot)");
-        emit log_named_string("verdict", sellable ? "SELLABLE" : "HONEYPOT / unsellable -> FLAGGED RED");
+        emit log_named_string("verdict", status == 1 ? "HONEYPOT / unsellable -> FLAGGED RED" : "not caught");
         emit log_named_uint("loss bps", lossBps);
-        assertFalse(sellable, "checker FAILED to catch the honeypot");
+        assertEq(status, 1, "checker FAILED to catch the honeypot (bought but should not sell)");
     }
 
     /// Live check driven by the scanner: reads CHECK_TOKEN env, forks latest, and prints a
@@ -126,10 +126,10 @@ contract HoneypotCheck is Test {
         address routerAddr = vm.envOr("CHECK_ROUTER", address(ROUTER));
         address wnative = vm.envOr("CHECK_WNATIVE", WETH);
         vm.createSelectFork(forkAlias); // latest block on the target chain
-        (bool sellable, uint256 lossBps) = _checkOn(token, routerAddr, wnative);
+        (uint8 status, uint256 lossBps) = _checkOn(token, routerAddr, wnative);
+        string memory v = status == 0 ? "SELLABLE" : status == 1 ? "HONEYPOT" : "NOBUY";
         emit log_named_string(
-            "SCANRESULT",
-            string.concat(vm.toString(token), " ", sellable ? "SELLABLE" : "HONEYPOT", " ", vm.toString(lossBps))
+            "SCANRESULT", string.concat(vm.toString(token), " ", v, " ", vm.toString(lossBps))
         );
     }
 

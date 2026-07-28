@@ -67,6 +67,8 @@ def build_card(name, token, chain, key):
     hard, soft = [], []
     if verdict == "HONEYPOT":
         hard.append("HONEYPOT — CANNOT SELL")
+    elif verdict == "NOBUY":
+        soft.append("no liquidity / not tradeable yet")
     try:
         if int(loss) >= 3000:
             hard.append(f"HIGH TAX ~{int(loss) // 100}%")
@@ -85,7 +87,14 @@ def build_card(name, token, chain, key):
         head = "✅ <b>Looks clean</b>"
 
     src = "verified" if verified else ("not verified" if verified is False else "unknown")
-    sell = f"{verdict}" + (f" (round-trip {loss} bps)" if verdict not in ("HONEYPOT", "ERROR", "UNKNOWN") else "")
+    if verdict == "SELLABLE":
+        sell = f"SELLABLE (round-trip {loss} bps)"
+    elif verdict == "HONEYPOT":
+        sell = "HONEYPOT — sell reverts"
+    elif verdict == "NOBUY":
+        sell = "not tradeable yet (no liquidity)"
+    else:
+        sell = verdict
     lines = [
         f"{head}  —  new {name.upper()} launch",
         f"<code>{token}</code>",
@@ -176,9 +185,34 @@ def run(chains, interval):
         time.sleep(interval)
 
 
+def test_feed(chains, count):
+    """Dry-run: build + print cards for the most recent real launches per chain."""
+    key = S.etherscan_key()
+    print(f"--- TEST FEED: {count} most recent launch(es) per chain (dry-run, no Telegram) ---")
+    for name in chains:
+        chain = S.CHAINS.get(name.strip().lower())
+        if not chain:
+            continue
+        try:
+            toks = recent_tokens(chain, 3000, count)
+        except Exception as exc:
+            print(f"\n[{name}] fetch failed: {exc}")
+            continue
+        if not toks:
+            print(f"\n[{name}] no recent launches in window")
+            continue
+        for tok in toks:
+            print("\n" + build_card(name.strip().lower(), tok, chain, key))
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "demo":
         demo()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        chains = sys.argv[2].split(",") if len(sys.argv) > 2 else ["ethereum", "bsc"]
+        count = int(sys.argv[3]) if len(sys.argv) > 3 else 2
+        test_feed(chains, count)
         return
     chains = sys.argv[1].split(",") if len(sys.argv) > 1 else ["ethereum", "bsc"]
     interval = int(sys.argv[2]) if len(sys.argv) > 2 else 180

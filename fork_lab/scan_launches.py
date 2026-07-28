@@ -161,18 +161,22 @@ def scan_chain(name, chain, span, max_tokens, key):
         verdict, loss = honeypot_check(token, chain)
         print(f"    live sell test  : {verdict}  (round-trip loss bps: {loss})")
 
-        flags = []
-        if v is False:
-            flags.append("UNVERIFIED")
+        hard, soft = [], []
         if verdict == "HONEYPOT":
-            flags.append("HONEYPOT-CANT-SELL")
+            hard.append("HONEYPOT-CANT-SELL")
+        elif verdict == "NOBUY":
+            soft.append("NO-LIQUIDITY")
         try:
-            if int(loss) >= 2000:
-                flags.append(f"HIGH-TAX~{int(loss) // 100}%")
+            if int(loss) >= 3000:
+                hard.append(f"HIGH-TAX~{int(loss) // 100}%")
+            elif int(loss) >= 1000:
+                soft.append(f"tax~{int(loss) // 100}%")
         except ValueError:
             pass
-        card = "AVOID" if flags else "no obvious traps (still DYOR)"
-        print(f"    >>> {card}" + (f"   [{', '.join(flags)}]" if flags else ""))
+        if v is False:
+            soft.append("unverified")
+        card = "AVOID" if hard else ("CAUTION" if soft else "clean (still DYOR)")
+        print(f"    >>> {card}" + (f"   [{', '.join(hard + soft)}]" if (hard or soft) else ""))
 
     if checked == 0:
         print("  (no wrapped-native pairs found in this window — widen the span)")
