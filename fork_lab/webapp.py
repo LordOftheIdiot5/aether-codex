@@ -181,6 +181,35 @@ def assess(token, chain_name):
     }
 
 
+def trending(chain_name, cap=4):
+    """Tokens trending NOW (GeckoTerminal), each run through OUR safety checks.
+    Honest: 'trending' means it's getting attention right now — NOT that it will keep
+    going up. The value we add is verifying the trending ones aren't rugs."""
+    net = "eth" if chain_name == "ethereum" else "bsc"
+    url = f"https://api.geckoterminal.com/api/v2/networks/{net}/trending_pools?duration=24h"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        data = json.loads(r.read()).get("data", [])
+    wnative = S.CHAINS[chain_name]["wnative"].lower()
+    out = []
+    for pool in data:
+        try:
+            base_id = pool["relationships"]["base_token"]["data"]["id"]
+            addr = base_id.split("_")[-1]
+            if not addr.startswith("0x") or len(addr) != 42 or addr.lower() == wnative:
+                continue
+            attrs = pool.get("attributes", {})
+            a = assess(addr, chain_name)
+            a["change24"] = (attrs.get("price_change_percentage") or {}).get("h24")
+            a["vol24"] = (attrs.get("volume_usd") or {}).get("h24")
+            out.append(a)
+            if len(out) >= cap:
+                break
+        except Exception:
+            continue
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, body, ctype="application/json", code=200):
         self.send_response(code)
@@ -213,11 +242,26 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/scan":
             chain = q.get("chain", ["ethereum"])[0]
             count = max(1, min(5, int(q.get("count", ["3"])[0])))
+            clean_only = q.get("clean", ["0"])[0] == "1"
             if chain not in S.CHAINS:
                 return self._json({"error": "unknown chain"}, 400)
             try:
-                toks = recent_tokens(S.CHAINS[chain], 3000, count)
-                return self._json([assess(t, chain) for t in toks])
+                n = 6 if clean_only else count  # scan more, keep only clean ones
+                rows = [assess(t, chain) for t in recent_tokens(S.CHAINS[chain], 3000, n)]
+                if clean_only:
+                    rows = [r for r in rows if r["tier"] == "clean"]
+                    rows.sort(key=lambda r: (r.get("liquidity") or 0), reverse=True)
+                    rows = rows[:count]
+                return self._json(rows)
+            except Exception as exc:
+                return self._json({"error": str(exc)}, 500)
+        if u.path == "/api/trending":
+            chain = q.get("chain", ["ethereum"])[0]
+            count = max(1, min(5, int(q.get("count", ["4"])[0])))
+            if chain not in S.CHAINS:
+                return self._json({"error": "unknown chain"}, 400)
+            try:
+                return self._json(trending(chain, count))
             except Exception as exc:
                 return self._json({"error": str(exc)}, 500)
         self._json({"error": "not found"}, 404)

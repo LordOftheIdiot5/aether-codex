@@ -56,6 +56,7 @@
   .flag{font-size:11.5px;background:#1b2334;border:1px solid var(--line);color:var(--dim);padding:3px 8px;border-radius:999px}
   .flag.hard{color:var(--red);border-color:rgba(242,86,75,.4)}
   .muted{color:var(--dim);font-size:13px}
+  .chk{display:flex;align-items:center;gap:7px;color:var(--dim);font-size:13px;margin-top:10px;cursor:pointer}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
     border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
   @keyframes s{to{transform:rotate(360deg)}}
@@ -106,8 +107,23 @@
         </select>
         <button id="scanBtn">Scan</button>
       </div>
+      <label class="chk"><input type="checkbox" id="cleanOnly" /> Worth a look only — clean, ranked by liquidity</label>
       <div class="results" id="scanOut"><div class="muted">Pulls the newest pairs and safety-checks each.</div></div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>Trending — safety-checked</h2>
+    <div class="row">
+      <select id="trendChain">
+        <option value="ethereum">Ethereum</option>
+        <option value="bsc">BSC</option>
+      </select>
+      <button id="trendBtn">Load trending</button>
+    </div>
+    <div class="muted" style="margin-top:10px">Tokens getting attention right now, each fork-verified for safety.
+      <b>Trending ≠ will pump</b> — it's attention shown as fact; you still judge the meme.</div>
+    <div class="results" id="trendOut"></div>
   </div>
 
   <footer>
@@ -136,6 +152,9 @@ function cardHTML(r){
   const liq = (r.liquidity!=null)
     ? `${r.liquidity.toFixed(r.liquidity<1?3:2)} ${esc(r.native||"")}`
     : "unknown";
+  const mom = (r.change24!=null || r.vol24!=null)
+    ? `<div class="meta"><span class="k">24h:</span> ${r.change24!=null?((Number(r.change24)>=0?"+":"")+Number(r.change24).toFixed(1)+"%"):"—"}${r.vol24!=null?("  ·  vol $"+Math.round(Number(r.vol24)).toLocaleString()):""}</div>`
+    : "";
   return `<div class="verdict ${r.tier}">
     <div class="top">
       <span class="badge ${r.tier}">${TITLES[r.tier]||r.tier}</span>
@@ -145,6 +164,7 @@ function cardHTML(r){
     <div class="addr">${esc(r.token)}</div>
     <div class="meta"><span class="k">sell test:</span> ${esc(sellLine(r))}</div>
     <div class="meta"><span class="k">liquidity:</span> ${liq}</div>
+    ${mom}
     <div class="meta"><span class="k">source:</span> ${r.verified===true?"verified":(r.verified===false?"not verified":"unknown")}</div>
     <div class="meta"><span class="k">ownership:</span> ${esc(r.ownership||"unknown")}</div>
     ${flags?`<div class="flags">${flags}</div>`:""}
@@ -165,13 +185,24 @@ document.getElementById("checkBtn").onclick = async ()=>{
 };
 document.getElementById("scanBtn").onclick = async ()=>{
   const chain=scanChain.value, count=scanCount.value;
+  const clean = document.getElementById("cleanOnly").checked ? "&clean=1" : "";
   scanBtn.disabled=true; loading(scanOut,`pulling latest ${chain.toUpperCase()} launches & checking each…`);
   try{
-    const rows = await fetch(`/api/scan?chain=${chain}&count=${count}`).then(x=>x.json());
+    const rows = await fetch(`/api/scan?chain=${chain}&count=${count}${clean}`).then(x=>x.json());
     if(rows.error){ errbox(scanOut,rows.error); }
-    else if(!rows.length){ scanOut.innerHTML=`<div class="muted">No fresh launches in the window — try again shortly.</div>`; }
+    else if(!rows.length){ scanOut.innerHTML=`<div class="muted">${clean?"No clean launches in this window — most fresh tokens fail a safety check.":"No fresh launches in the window — try again shortly."}</div>`; }
     else scanOut.innerHTML = rows.map(cardHTML).join("");
   }catch(e){ errbox(scanOut,e.message); } finally{ scanBtn.disabled=false; }
+};
+document.getElementById("trendBtn").onclick = async ()=>{
+  const chain=trendChain.value;
+  trendBtn.disabled=true; loading(trendOut,`loading trending ${chain.toUpperCase()} tokens & safety-checking each…`);
+  try{
+    const rows = await fetch(`/api/trending?chain=${chain}`).then(x=>x.json());
+    if(rows.error){ errbox(trendOut,rows.error); }
+    else if(!rows.length){ trendOut.innerHTML=`<div class="muted">No trending tokens returned — try again shortly.</div>`; }
+    else trendOut.innerHTML = rows.map(cardHTML).join("");
+  }catch(e){ errbox(trendOut,e.message); } finally{ trendBtn.disabled=false; }
 };
 checkAddr.addEventListener("keydown",e=>{ if(e.key==="Enter") checkBtn.click(); });
 </script>
