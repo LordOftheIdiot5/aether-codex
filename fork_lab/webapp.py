@@ -210,6 +210,34 @@ def trending(chain_name, cap=4):
     return out
 
 
+def trending_list(chain_name, cap=5):
+    """Fast: just the trending tokens + 24h momentum, NO safety checks (so the UI can
+    render placeholders instantly and check each one progressively)."""
+    net = "eth" if chain_name == "ethereum" else "bsc"
+    url = f"https://api.geckoterminal.com/api/v2/networks/{net}/trending_pools?duration=24h"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        data = json.loads(r.read()).get("data", [])
+    wnative = S.CHAINS[chain_name]["wnative"].lower()
+    out = []
+    for pool in data:
+        try:
+            addr = pool["relationships"]["base_token"]["data"]["id"].split("_")[-1]
+            if not addr.startswith("0x") or len(addr) != 42 or addr.lower() == wnative:
+                continue
+            attrs = pool.get("attributes", {})
+            out.append({
+                "token": addr,
+                "change24": (attrs.get("price_change_percentage") or {}).get("h24"),
+                "vol24": (attrs.get("volume_usd") or {}).get("h24"),
+            })
+            if len(out) >= cap:
+                break
+        except Exception:
+            continue
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, body, ctype="application/json", code=200):
         self.send_response(code)
@@ -253,6 +281,14 @@ class Handler(BaseHTTPRequestHandler):
                     rows.sort(key=lambda r: (r.get("liquidity") or 0), reverse=True)
                     rows = rows[:count]
                 return self._json(rows)
+            except Exception as exc:
+                return self._json({"error": str(exc)}, 500)
+        if u.path == "/api/trending_list":
+            chain = q.get("chain", ["ethereum"])[0]
+            if chain not in S.CHAINS:
+                return self._json({"error": "unknown chain"}, 400)
+            try:
+                return self._json(trending_list(chain, 5))
             except Exception as exc:
                 return self._json({"error": str(exc)}, 500)
         if u.path == "/api/trending":

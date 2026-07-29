@@ -194,14 +194,28 @@ document.getElementById("scanBtn").onclick = async ()=>{
     else scanOut.innerHTML = rows.map(cardHTML).join("");
   }catch(e){ errbox(scanOut,e.message); } finally{ scanBtn.disabled=false; }
 };
+function trendPlaceholder(t){
+  const c = t.change24!=null?((Number(t.change24)>=0?"+":"")+Number(t.change24).toFixed(1)+"%"):"—";
+  return `<div class="verdict caution"><div class="muted"><span class="spin"></span>checking ${esc(t.token.slice(0,12))}… · 24h ${c}</div></div>`;
+}
 document.getElementById("trendBtn").onclick = async ()=>{
   const chain=trendChain.value;
-  trendBtn.disabled=true; loading(trendOut,`loading trending ${chain.toUpperCase()} tokens & safety-checking each…`);
+  trendBtn.disabled=true; loading(trendOut,`loading trending ${chain.toUpperCase()} tokens…`);
   try{
-    const rows = await fetch(`/api/trending?chain=${chain}`).then(x=>x.json());
-    if(rows.error){ errbox(trendOut,rows.error); }
-    else if(!rows.length){ trendOut.innerHTML=`<div class="muted">No trending tokens returned — try again shortly.</div>`; }
-    else trendOut.innerHTML = rows.map(cardHTML).join("");
+    const list = await fetch(`/api/trending_list?chain=${chain}`).then(x=>x.json());
+    if(list.error){ errbox(trendOut,list.error); return; }
+    if(!list.length){ trendOut.innerHTML=`<div class="muted">No trending tokens returned — try again shortly.</div>`; return; }
+    // render placeholders instantly, then fill each card as its fork-check resolves
+    trendOut.innerHTML = list.map((t,i)=>`<div id="tr${i}">${trendPlaceholder(t)}</div>`).join("");
+    for(let i=0;i<list.length;i++){
+      const t=list[i], box=document.getElementById("tr"+i);
+      try{
+        const r = await fetch(`/api/check?chain=${chain}&token=${t.token}`).then(x=>x.json());
+        if(r.error){ box.innerHTML=`<div class="verdict caution"><div class="muted">check failed: ${esc(r.error)}</div></div>`; continue; }
+        r.change24=t.change24; r.vol24=t.vol24;
+        box.innerHTML = cardHTML(r);
+      }catch(e){ box.innerHTML=`<div class="verdict caution"><div class="muted">check failed</div></div>`; }
+    }
   }catch(e){ errbox(trendOut,e.message); } finally{ trendBtn.disabled=false; }
 };
 checkAddr.addEventListener("keydown",e=>{ if(e.key==="Enter") checkBtn.click(); });
