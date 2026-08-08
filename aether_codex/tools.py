@@ -55,12 +55,19 @@ def run_python(code: str) -> str:
     what it prints. `math` and `numpy` (as `np`) are pre-imported. Always
     print() your results, including units. Example:
     print(f"Heat loss: {U * A * dT:.0f} W")"""
-    # NOTE: this executes in-process and is NOT a sandbox. Fine for a local
-    # prototype driven by your own prompts; do not expose it publicly as-is.
-    env: dict = {"math": math}
+    # NOTE: this executes in-process and is NOT a full sandbox. It is fine for
+    # a local prototype driven by your own prompts. Do not expose the app
+    # publicly without further isolation.
+    safe_builtins = {
+        "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
+        "enumerate": enumerate, "float": float, "int": int, "len": len,
+        "list": list, "max": max, "min": min, "pow": pow, "print": print,
+        "range": range, "round": round, "sorted": sorted, "str": str,
+        "sum": sum, "tuple": tuple, "zip": zip,
+    }
+    env: dict = {"__builtins__": safe_builtins, "math": math}
     try:
         import numpy as np
-
         env["np"] = np
     except ImportError:
         pass
@@ -70,7 +77,7 @@ def run_python(code: str) -> str:
         with contextlib.redirect_stdout(buffer):
             exec(code, env)  # noqa: S102 — deliberate, see note above
     except Exception:
-        return "Error while running code:\n" + traceback.format_exc(limit=2)
+        return "Error while running code:\n" + traceback.format_exc(limit=3)
     output = buffer.getvalue().strip()
     if not output and "result" in env:
         output = repr(env["result"])
